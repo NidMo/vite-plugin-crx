@@ -1,0 +1,15 @@
+{
+  "name": "test-plugin-crx",
+  "version": "0.0.0",
+  "description": "vite-plugin-crx example",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "vite build"
+  },
+  "author": "Ming07",
+  "license": "ISC",
+  "devDependencies": {
+    "vite": "link:../node_modules",
+    "vite-plugin-crx": "file:../dist"
+  }
+}
