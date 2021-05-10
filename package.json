@@ -1,0 +1,34 @@
+{
+  "name": "vite-plugin-crx",
+  "version": "1.0.0",
+  "description": "vite plugin chrome extension",
+  "files": [
+    "dist"
+  ],
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "rollup -c"
+  },
+  "keywords": [
+    "vite",
+    "crx"
+  ],
+  "author": "Ming07",
+  "license": "ISC",
+  "devDependencies": {
+    "@rollup/plugin-typescript": "^8.2.1",
+    "@types/chrome": "0.0.138",
+    "@types/node": "^15.0.2",
+    "@types/rollup": "^0.54.0",
+    "@types/ws": "^7.4.2",
+    "rollup": "^2.47.0",
+    "tslib": "^2.2.0",
+    "typescript": "^4.2.4",
+    "vite": "^2.2.4"
+  },
+  "dependencies": {
+    "ws": "^7.4.5"
+  }
+}
