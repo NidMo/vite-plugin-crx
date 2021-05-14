@@ -1,60 +1,38 @@
-import fs from "fs";
 import path from "path";
 import { Plugin } from "vite";
 import ws from "ws";
-import { genReloadHtml } from "./reload";
+import { Options, ResolvedOptions } from "./type";
+import {
+  findBackgroundEntry,
+  genInputConfig,
+  genManifest,
+  genReloadHtml,
+  isBackgroundOpts,
+} from "./utils";
 import { copyDir } from "./utils";
 export { reload } from "./reload";
 
-export interface Options {
-  host?: string;
-  port?: number;
-  /**
-   * 扩展background的入口
-   */
-  background?: string | string[];
-  /**
-   * 扩展content-script的入口
-   */
-  content?: string | string[];
-  /**
-   * 扩展popup的入口
-   */
-  popup?: string;
-}
-
-export interface ResolvedOptions extends Options {
-  root: string;
-}
-
-export default function crxPlugin(rawOptions: Options = {}): Plugin {
+export default function crxPlugin(
+  rawOptions: Options = { name: "my extension", version: "1.0.0" }
+): Plugin {
   let options: ResolvedOptions = {
     host: "localhost",
     port: 3060,
+    manifest_version: 2,
     ...rawOptions,
     root: process.cwd(),
   };
-  let needInsertBackground = false;
-  let outDir = path.resolve(options.root,"")
+  // background的热重载入口
+  let reloadEntry = findBackgroundEntry(options.background);
+  let outDir = path.resolve(options.root, "");
   // 存放客户端逻辑的目录
   const clientDir = path.resolve(
     options.root,
     "node_modules/vite-plugin-crx/client"
   );
-  const background =
-    typeof options.background === "string"
-      ? [options.background]
-      : typeof options.background === "undefined"
-      ? []
-      : Array.from(options.background);
-  const content =
-    typeof options.content === "string"
-      ? [options.content]
-      : typeof options.content === "undefined"
-      ? []
-      : Array.from(options.content);
   const reloadCode =
-    `import { reload } from "vite-plugin-crx"\n` + `reload(${options})`;
+    `import { reload } from "vite-plugin-crx"\n` +
+    `reload(${options.host},${options.port})`;
   // 创建一个ws服务
   let wss = new ws.Server({
     host: options.host,
@@ -72,24 +50,30 @@ export default function crxPlugin(rawOptions: Options = {}): Plugin {
   return {
     name: "vite:chrome-extension",
     config(config) {
-      outDir = outDir + "/" + (config.build?.outDir || "dist")
+      const { mode } = config;
+      const { background } = options;
+
+      outDir = outDir + "/" + (config.build?.outDir || "dist");
+      // 开发模式下，需要热重载
+      reloadEntry = mode === "development" ? reloadEntry : "";
+
       // 开发模式下，若background不存在入口，则生成一个html作为扩展入口来插入热重载代码
-      if (config.mode === "development" && background.length === 0) {
-        needInsertBackground = true
-        const filename = clientDir + "/background.html";
-        const dir = path.dirname(filename);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(filename, genReloadHtml(options), {
-          encoding: "utf-8",
-        });
+      let isGenHtml = false;
+      if (mode === "development" && !isBackgroundOpts(background)) {
+        genReloadHtml(clientDir, options);
+        isGenHtml = true;
       }
+
+      // 生成清单文件manifest.json
+      genManifest(clientDir, options, isGenHtml);
+
       // 根据配置的background和content生成vite的入口配置
+      const inputOptions = genInputConfig(options);
       return {
         build: {
-          emptyOutDir: config.mode !== "development",
           rollupOptions: {
+            external: "vite-plugin-crx",
+            input: inputOptions,
             output: {
               entryFileNames: "[name].js",
               chunkFileNames: "[name].js",
@@ -101,24 +85,17 @@ export default function crxPlugin(rawOptions: Options = {}): Plugin {
     },
 
     transform(code, id) {
-      console.log("id:", id);
-      console.log("bg:", background);
-      // TODO：找到background，插入热重载代码
-      if (id.endsWith(background[0])) {
-        console.log("background:", options.background);
-        console.log("id:", id);
+      // TODO：找到background入口中第一个，插入热重载代码
+      if (id.endsWith(reloadEntry)) {
         code += `${reloadCode}`;
-        console.log("code:", code);
       }
-
       return code;
     },
     buildEnd() {
       console.log(`\n build end`);
       // 复制client目录下的代码到构建目录
-      if(needInsertBackground){
-        copyDir(clientDir, outDir);
-      }
+      copyDir(clientDir, outDir);
+
       if (client) {
         client.send("reload");
       }
