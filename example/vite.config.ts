@@ -1,10 +1,10 @@
-import { UserConfig } from 'vite'
-import crx from "vite-plugin-crx"
+import { UserConfig } from "vite";
+import crx from "vite-plugin-crx";
 
-const path = require('path')
+const path = require("path");
 
-function pathResolve (dir: string) {
-  return path.resolve(process.cwd(), dir)
+function pathResolve(dir: string) {
+  return path.resolve(process.cwd(), dir);
 }
 
 const viteConfig: UserConfig = {
@@ -13,22 +13,24 @@ const viteConfig: UserConfig = {
   },
   plugins: [
     crx({
-      background: pathResolve("background/index.ts")
-    })
+      name: "demo",
+      version: "1.0.0",
+      background: [
+        pathResolve("background/index.ts"),
+        pathResolve("background/a.ts"),
+      ],
+      content: [
+        {
+          matches: ["<all_urls>"],
+          js: [pathResolve("./content/index.ts"), pathResolve("./content/b.ts")],
+        },
+        {
+          matches: ["http://*/*"],
+          js: [pathResolve("./content/c.ts")],
+        },
+      ],
+    }),
   ],
-  build: {
-    emptyOutDir: false,
-    rollupOptions: {
-      input: {
-        background: pathResolve("background/index.ts")
-      },
-      output: {
-        entryFileNames: "[name].js",
-        chunkFileNames: "[name].js",
-        assetFileNames: "[name].js"
-      }
-    }
-  }
-}
+};
 
-export default viteConfig
+export default viteConfig;
