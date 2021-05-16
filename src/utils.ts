@@ -10,6 +10,11 @@ import {
   ResolvedOptions,
 } from "./type";
 
+/**
+ * 复制目录文件到指定目录
+ * @param srcDir
+ * @param destDir
+ */
 export function copyDir(srcDir: string, destDir: string): void {
   fs.mkdirSync(destDir, { recursive: true });
   for (const file of fs.readdirSync(srcDir)) {
@@ -38,21 +43,6 @@ export const genReloadHtmlCode = function (options: ResolvedOptions) {
       <meta http-equiv="X-UA-Compatible" content="IE=edge">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>chrome extension background</title>
-      <script>
-          const socket = new WebSocket("ws://${options.host}:${options.port}");
-          
-          // Connection opened
-          socket.addEventListener("connection", function (event) {
-              socket.send("Hello Server!");
-          });
-  
-          // Listen for messages
-          socket.addEventListener("message", function (event) {
-              if (event.data === "reload") {
-                  chrome.runtime.reload()
-              }
-          });
-      </script>
   </head>
   
   <body>`;
@@ -223,37 +213,38 @@ export const genContentInput = function (
 
 /**
  * 生成background的清单项
+ * @description 默认将background设为html，js通过es module方式引入
  * @param options
  * @returns
  */
 export const genBackgroundManifest = function (
   options?: BackgroundOpts
 ): Background {
-  if (typeof options === "string") {
-    const entryPath = normalizePath(options);
-    const { ext } = path.parse(entryPath);
-    return ext === ".html"
-      ? { page: "background.html" }
-      : { scripts: ["background.js"] };
-  } else if (Array.isArray(options)) {
-    const entries = options.map((entryPath) => {
-      entryPath = normalizePath(entryPath);
-      const { dir, name } = path.parse(entryPath);
-      if (name === "index") {
-        // index入口文件取上级目录为入口名
-        const entryName = dir.split("/").pop() || "background";
-        return entryName + ".js";
-      } else {
-        return name + ".js";
-      }
-    });
-    return { scripts: entries };
-  } else if (typeof options === "object" && "page" in options) {
-    return genBackgroundManifest(options.page);
-  } else if (typeof options === "object" && "scripts" in options) {
-    return genBackgroundManifest(options.scripts);
-  }
-  return {};
+  // if (typeof options === "string") {
+  //   const entryPath = normalizePath(options);
+  //   const { ext } = path.parse(entryPath);
+  //   return ext === ".html"
+  //     ? { page: "background.html" }
+  //     : { scripts: ["background.js"] };
+  // } else if (Array.isArray(options)) {
+  //   const entries = options.map((entryPath) => {
+  //     entryPath = normalizePath(entryPath);
+  //     const { dir, name } = path.parse(entryPath);
+  //     if (name === "index") {
+  //       // index入口文件取上级目录为入口名
+  //       const entryName = dir.split("/").pop() || "background";
+  //       return entryName + ".js";
+  //     } else {
+  //       return name + ".js";
+  //     }
+  //   });
+  //   return { scripts: entries };
+  // } else if (typeof options === "object" && "page" in options) {
+  //   return genBackgroundManifest(options.page);
+  // } else if (typeof options === "object" && "scripts" in options) {
+  //   return genBackgroundManifest(options.scripts);
+  // }
+  return { page: "background.html" };
 };
 
 /**
@@ -312,4 +303,83 @@ export const findBackgroundEntry = function (options?: BackgroundOpts) {
   }
   path = normalizePath(path);
   return path;
+};
+
+/**
+ * 生成background入口html
+ * @param clientDir 
+ * @param inputOpts 
+ * @param isReload 
+ */
+export const genBackgroundHtml= function (clientDir: string,inputOpts: Record<string, string>,isReload?: boolean) {
+  const filename = clientDir + "/background.html";
+  const dir = path.dirname(filename);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  if(isReload){
+    fs.writeFileSync(clientDir + '/reload.js', genReloadCode(), {
+      encoding: "utf-8",
+    });
+  }
+  fs.writeFileSync(filename, genBackgroundHtmlCode(inputOpts,isReload), {
+    encoding: "utf-8",
+  });
+}
+
+
+export const genBackgroundHtmlCode = function (inputOpts: Record<string, string>,isReload?: boolean) {
+  const template = `<!DOCTYPE html>
+  <html lang="en">
+  
+  <head>
+      <meta charset="UTF-8">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>chrome extension background</title>
+      ${isReload ? '<script type="module" src="reload.js"></script>' : ''}
+      <!--background-entry-->
+  </head>
+  
+  <body>`;
+  
+  const keys = Object.keys(inputOpts);
+  const entries = keys.reduce((pre: string, current)=> {
+    const entry = `<script type="module" src="${current}.js"></script>`
+    return pre + entry
+  },"")
+  const html = template.replace(`<!--background-entry-->`,entries)
+  return html
+};
+
+/**
+ * 生成客户端热重载代码
+ * @param host 
+ * @param port 
+ * @returns 
+ */
+ export const genReloadCode = function () {
+   return `export const reload = function (host, port) {
+     // Create WebSocket connection.
+     const url = "ws://" + host + ":" + port
+    const socket = new WebSocket(url);
+    // Connection opened
+    socket.addEventListener("message", async ({ data }) => {
+      handleMessage(JSON.parse(data));
+    });
+  };
+  
+  async function handleMessage(payload) {
+    switch (payload.type) {
+      case "connected":
+        console.log('[vite-pluign-crx] connected.');
+        break;
+      case "update":
+        chrome.runtime.reload();
+        break;
+      default:
+        break;
+    }
+  }
+  `;
 };
