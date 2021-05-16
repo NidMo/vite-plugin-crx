@@ -8,13 +8,11 @@ function pathResolve(dir: string) {
 }
 
 const viteConfig: UserConfig = {
-  server: {
-    port: 3050,
-  },
   plugins: [
     crx({
       name: "demo",
       version: "1.0.0",
+      port: 3080,
       background: [
         pathResolve("background/index.ts"),
         pathResolve("background/a.ts"),
@@ -22,11 +20,11 @@ const viteConfig: UserConfig = {
       content: [
         {
           matches: ["<all_urls>"],
-          js: [pathResolve("./content/index.ts"), pathResolve("./content/b.ts")],
+          js: [pathResolve("./content/index.ts")],
         },
         {
-          matches: ["http://*/*"],
-          js: [pathResolve("./content/c.ts")],
+          matches: ["<all_urls>"],
+          js: [pathResolve("./content/entry.ts")],
         },
       ],
     }),
