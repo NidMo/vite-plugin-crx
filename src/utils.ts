@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { normalizePath } from "vite";
+import { normalizePath,Plugin } from "vite";
 import {
   Background,
   BackgroundOpts,
@@ -109,7 +109,7 @@ export const genManifest = function (
   options: ResolvedOptions,
   isGenHtml?: boolean
 ) {
-  // 复制配置项，剔除不熟悉于chrome extension的配置
+  // 复制配置项，剔除不属于于chrome extension的配置
   const { host, port, root, background, content, ...manifest } = options;
   const filename = clientDir + "/manifest.json";
   const dir = path.dirname(filename);
@@ -311,24 +311,19 @@ export const findBackgroundEntry = function (options?: BackgroundOpts) {
  * @param inputOpts 
  * @param isReload 
  */
-export const genBackgroundHtml= function (clientDir: string,inputOpts: Record<string, string>,isReload?: boolean) {
+export const genBackgroundHtml= function (clientDir: string,inputOpts: Record<string, string>) {
   const filename = clientDir + "/background.html";
   const dir = path.dirname(filename);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  if(isReload){
-    fs.writeFileSync(clientDir + '/reload.js', genReloadCode(), {
-      encoding: "utf-8",
-    });
-  }
-  fs.writeFileSync(filename, genBackgroundHtmlCode(inputOpts,isReload), {
+  fs.writeFileSync(filename, genBackgroundHtmlCode(inputOpts), {
     encoding: "utf-8",
   });
 }
 
 
-export const genBackgroundHtmlCode = function (inputOpts: Record<string, string>,isReload?: boolean) {
+export const genBackgroundHtmlCode = function (inputOpts: Record<string, string>) {
   const template = `<!DOCTYPE html>
   <html lang="en">
   
@@ -337,7 +332,6 @@ export const genBackgroundHtmlCode = function (inputOpts: Record<string, string>
       <meta http-equiv="X-UA-Compatible" content="IE=edge">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>chrome extension background</title>
-      ${isReload ? '<script type="module" src="reload.js"></script>' : ''}
       <!--background-entry-->
   </head>
   
@@ -359,11 +353,11 @@ export const genBackgroundHtmlCode = function (inputOpts: Record<string, string>
  * @returns 
  */
  export const genReloadCode = function () {
-   return `export const reload = function (host, port) {
-     // Create WebSocket connection.
-     const url = "ws://" + host + ":" + port
+   return `const reload = function (host, port) {
+
+    const url = "ws://" + host + ":" + port
     const socket = new WebSocket(url);
-    // Connection opened
+
     socket.addEventListener("message", async ({ data }) => {
       handleMessage(JSON.parse(data));
     });
@@ -383,3 +377,32 @@ export const genBackgroundHtmlCode = function (inputOpts: Record<string, string>
   }
   `;
 };
+
+/**
+ * 生成content script plugin
+ * @description content scrpit不支持es module语法，每个content入口都打包成cjs格式
+ * @param contentInput 
+ */
+export const genContentScriptPlugins = function (contentInput: Record<string,string>): Plugin[] {
+  const entries = Object.keys(contentInput)
+  return entries.map((entry) => {
+    return {
+      name: "vite:chrome-extension-content-script",
+      config() {
+        return {
+          build: {
+            rollupOptions: {
+              input: {[entry]: contentInput[entry]},
+              output: {
+                entryFileNames: "[name].js",
+                chunkFileNames: "[name].js",
+                assetFileNames: "[name].js",
+                format: "cjs"
+              },
+            },
+          },
+        };
+      }
+    } as Plugin
+  })
+}
